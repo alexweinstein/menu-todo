@@ -178,8 +178,13 @@
   }
 
   /* Steps */
-  .steps { padding: 0 4px 8px 66px; margin-top: -4px; }
-  .step { display: flex; align-items: flex-start; gap: 2px; min-height: 40px; }
+  .steps { padding: 0 4px 8px 38px; margin-top: -4px; }
+  .step { position: relative; display: flex; align-items: flex-start; gap: 2px; min-height: 40px; border-radius: 10px; }
+  .step .handle { width: 28px; }
+  .step .handle svg { width: 15px; height: 15px; }
+  .step.shifting { transition: transform 0.18s ease; }
+  .step.dragging { z-index: 5; background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); transition: none; }
+  .steps > .add-step { margin-left: 28px; }
   .step .check { width: 30px; height: 36px; margin-left: -6px; }
   .step .check svg { width: 20px; height: 20px; }
   .step .title { font-size: 15px; padding: 8px 0; }
@@ -641,6 +646,13 @@ const ops = {
     const t = findTask(tasks, id);
     if (t) t.steps = t.steps.filter((s) => s.id !== stepID);
   },
+  moveStepTo: (id, stepID, to) => (tasks) => {
+    const t = findTask(tasks, id);
+    const i = t ? t.steps.findIndex((s) => s.id === stepID) : -1;
+    if (i < 0) return;
+    const [step] = t.steps.splice(i, 1);
+    t.steps.splice(Math.min(to, t.steps.length), 0, step);
+  },
   moveStep: (id, stepID, offset) => (tasks) => {
     const t = findTask(tasks, id);
     const i = t ? t.steps.findIndex((s) => s.id === stepID) : -1;
@@ -897,6 +909,7 @@ function stepHTML(task, step, isCurrent) {
     ? `<input class="edit-input" data-edit="step" value="${escapeHTML(step.title)}" enterkeyhint="done">`
     : `<div class="title" data-action="edit-step">${escapeHTML(step.title)}</div>`;
   return `<div class="${classes}" data-step="${step.id}">
+    <span class="handle" aria-label="Drag to reorder">${ICON.grip}</span>
     <button class="check" data-action="toggle-step" aria-label="${step.done ? "Mark not done" : "Mark done"}">${checkSVG()}</button>
     ${title}
     <button class="more" data-action="step-menu" aria-label="More">${ICON.more}</button>
@@ -1207,21 +1220,25 @@ function openSettings() {
 $("#settingsButton").addEventListener("click", openSettings);
 
 // ---------------------------------------------------------------------------
-// Drag to reorder (touch or mouse, by the handle)
+// Drag to reorder (touch or mouse, by the handle). Tasks move within the list;
+// steps move within their own task.
 
 let drag = null;
-const GAP = 8;
+const TASK_GAP = 8;
 
 list.addEventListener("pointerdown", (event) => {
   const handle = event.target.closest(".handle");
   if (!handle || drag) return;
   event.preventDefault();
-  const el = handle.closest(".task");
-  const items = [...list.children];
+  const step = handle.closest(".step");
+  const el = step || handle.closest(".task");
+  const items = [...el.parentElement.children].filter((child) => child.matches(step ? ".step" : ".task"));
   const from = items.indexOf(el);
   drag = {
     el, items, from, to: from,
-    id: el.dataset.id,
+    id: step ? step.dataset.step : el.dataset.id,
+    taskID: step ? step.closest(".task").dataset.id : null,
+    gap: step ? 0 : TASK_GAP,
     startY: event.clientY,
     rects: items.map((item) => item.getBoundingClientRect()),
   };
@@ -1244,7 +1261,7 @@ list.addEventListener("pointermove", (event) => {
   for (let i = from - 1; i >= 0; i--) if (middle < rects[i].top + rects[i].height / 2) to = i;
   drag.to = to;
 
-  const shift = rects[from].height + GAP;
+  const shift = rects[from].height + drag.gap;
   items.forEach((item, i) => {
     if (item === el) return;
     let offset = 0;
@@ -1256,7 +1273,7 @@ list.addEventListener("pointermove", (event) => {
 
 function endDrag() {
   if (!drag) return;
-  const { el, items, from, to, id, rects } = drag;
+  const { el, items, from, to, id, taskID, rects } = drag;
   let slot = 0;
   if (to > from) slot = rects[to].bottom - rects[from].bottom;
   if (to < from) slot = rects[to].top - rects[from].top;
@@ -1265,7 +1282,7 @@ function endDrag() {
   setTimeout(() => {
     items.forEach((item) => { item.classList.remove("shifting", "dragging"); item.style.transform = ""; item.style.transition = ""; });
     drag = null;
-    if (to !== from) mutate(ops.move(id, to));
+    if (to !== from) mutate(taskID ? ops.moveStepTo(taskID, id, to) : ops.move(id, to));
     else render();
     poll();
   }, 150);
