@@ -1,0 +1,1464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Menu Todo</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Todo">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --surface: #ffffff;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --faint: #aeaeb2;
+    --line: rgba(60, 60, 67, 0.14);
+    --accent: #007aff;
+    --accent-soft: rgba(0, 122, 255, 0.14);
+    --green: #34c759;
+    --green-soft: rgba(52, 199, 89, 0.14);
+    --danger: #ff3b30;
+    --field: rgba(118, 118, 128, 0.12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.06);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --surface: #1c1c1e;
+      --text: #f2f2f7;
+      --muted: #98989f;
+      --faint: #636366;
+      --line: rgba(84, 84, 88, 0.6);
+      --accent: #0a84ff;
+      --accent-soft: rgba(10, 132, 255, 0.24);
+      --green: #30d158;
+      --green-soft: rgba(48, 209, 88, 0.18);
+      --danger: #ff453a;
+      --field: rgba(118, 118, 128, 0.24);
+      --shadow: none;
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); min-height: 100vh; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  input { font: inherit; color: inherit; }
+  svg { display: block; }
+
+  .app { max-width: 560px; margin: 0 auto; padding: 0 16px 48px; }
+
+  /* Header */
+  .top { display: flex; align-items: center; gap: 8px; padding: 14px 0 12px; }
+  .top h1 { margin: 0; flex: 1; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+  .sync { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .sync::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .sync.saving::before { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .sync.error::before { background: var(--danger); }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: var(--muted); }
+  .icon-btn:active { background: var(--field); }
+
+  /* Add a task */
+  .add {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border-radius: 14px; box-shadow: var(--shadow);
+    padding: 5px 5px 5px 14px; margin-bottom: 14px;
+  }
+  .add input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; padding: 9px 0; font-size: 17px; }
+  .add input::placeholder { color: var(--faint); }
+  .add button {
+    width: 38px; height: 38px; flex: none; border-radius: 10px;
+    display: grid; place-items: center; background: var(--accent); color: #fff;
+  }
+  .add button:disabled { opacity: 0.35; }
+
+  .banner {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    margin-bottom: 14px; padding: 12px 14px; border-radius: 14px;
+    background: color-mix(in srgb, var(--danger) 12%, var(--surface)); font-size: 15px;
+  }
+  .banner button { color: var(--accent); font-weight: 600; }
+
+  /* Tasks */
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .task {
+    position: relative; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow);
+  }
+  .task.next { box-shadow: var(--shadow), 0 0 0 2px var(--accent-soft); }
+  .task.shifting { transition: transform 0.18s ease; }
+  .task.dragging { z-index: 5; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22); transition: none; }
+  .task.completing { background: color-mix(in srgb, var(--green) 13%, var(--surface)); }
+  .task.completing > .row .title { color: var(--muted); text-decoration: line-through; }
+  .task.leaving { animation: leave 0.3s ease-in forwards; }
+  @keyframes leave { to { transform: translateX(55%); opacity: 0; } }
+
+  .row { display: flex; align-items: flex-start; gap: 4px; padding: 6px 4px 6px 0; min-height: 54px; }
+  .handle {
+    width: 34px; align-self: stretch; flex: none; display: grid; place-items: center;
+    color: var(--faint); touch-action: none; cursor: grab;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .check { position: relative; width: 36px; height: 40px; flex: none; display: grid; place-items: center; overflow: visible; }
+  .check svg { width: 25px; height: 25px; overflow: visible; }
+  .title { flex: 1; min-width: 0; padding: 9px 0; overflow-wrap: anywhere; cursor: text; }
+  .next > .row .title { font-size: 20px; font-weight: 650; padding: 7px 0; line-height: 1.3; }
+  .count {
+    flex: none; display: flex; align-items: center; gap: 3px; padding: 10px 4px;
+    font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .count svg { transition: transform 0.2s ease; }
+  .collapsed .count svg { transform: rotate(-90deg); }
+  .title-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .eyebrow { display: flex; align-items: center; gap: 8px; padding-top: 8px; }
+  .eyebrow .count { padding: 2px 4px; }
+  .next > .row .check { margin-top: 22px; }
+  .next > .row .title { padding-top: 2px; }
+  .badge {
+    flex: none; padding: 3px 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 800; letter-spacing: 0.04em;
+    color: var(--accent); background: var(--accent-soft);
+  }
+  .more { width: 36px; height: 40px; flex: none; display: grid; place-items: center; color: var(--faint); }
+
+  .edit-input {
+    flex: 1; min-width: 0; margin: 4px 0; padding: 5px 8px; border: 0; outline: none;
+    border-radius: 8px; background: var(--field); font-size: 17px;
+  }
+
+  /* Check circles */
+  .ring { fill: none; stroke: var(--faint); stroke-width: 1.6; }
+  .next > .row .ring { stroke: var(--accent); }
+  .progress {
+    fill: none; stroke: var(--green); stroke-width: 2.8; stroke-linecap: round;
+    stroke-dasharray: 62.83; transform: rotate(-90deg); transform-origin: 12px 12px;
+    transition: stroke-dashoffset 0.3s ease;
+  }
+  .fill { fill: var(--green); transform: scale(0); transform-origin: 12px 12px; }
+  .tick {
+    fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 16; stroke-dashoffset: 16;
+  }
+  .completing > .row .fill, .step.just-done .fill { animation: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+  .completing > .row .tick, .step.just-done .tick { animation: draw 0.25s ease-out 0.1s both; }
+  .completing > .row .progress { opacity: 0; }
+  @keyframes pop { from { transform: scale(0.4); } 60% { transform: scale(1.25); } to { transform: scale(1); } }
+  @keyframes draw { from { stroke-dashoffset: 16; } to { stroke-dashoffset: 0; } }
+
+  /* Little confetti burst on the checkbox */
+  .burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+  .burst::before {
+    content: ""; position: absolute; width: 26px; height: 26px; margin: -13px;
+    border: 1.5px solid var(--green); border-radius: 50%; animation: ripple 0.6s ease-out forwards;
+  }
+  .burst i {
+    position: absolute; width: 5px; height: 7px; margin: -3.5px -2.5px; border-radius: 1px;
+    background: var(--c); animation: fly 0.6s ease-out forwards;
+  }
+  @keyframes ripple { from { transform: scale(0.8); opacity: 0.8; } to { transform: scale(2.1); opacity: 0; } }
+  @keyframes fly {
+    from { transform: rotate(var(--a)) translateY(0) scale(1); opacity: 1; }
+    to { transform: rotate(var(--a)) translateY(calc(var(--d) * -1)) rotate(200deg) scale(0.5); opacity: 0; }
+  }
+
+  /* Steps */
+  .steps { padding: 0 4px 8px 66px; margin-top: -4px; }
+  .step { display: flex; align-items: flex-start; gap: 2px; min-height: 40px; }
+  .step .check { width: 30px; height: 36px; margin-left: -6px; }
+  .step .check svg { width: 20px; height: 20px; }
+  .step .title { font-size: 15px; padding: 8px 0; }
+  .step .more { height: 36px; }
+  .step.done .title { color: var(--muted); text-decoration: line-through; }
+  .step.done .fill { transform: scale(1); }
+  .step.done .tick { stroke-dashoffset: 0; }
+  .step.done .ring { stroke: transparent; }
+  .next .step.current .title { font-weight: 600; }
+  .step .edit-input { font-size: 16px; }
+  .add-step {
+    display: flex; align-items: center; gap: 8px; min-height: 40px; padding-left: 2px;
+    color: var(--muted); font-size: 15px;
+  }
+  .add-step input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 16px; padding: 8px 0; }
+
+  .empty { text-align: center; color: var(--muted); padding: 48px 0; }
+
+  /* Undo toast */
+  .toast {
+    position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 40;
+    display: flex; align-items: center; gap: 14px; max-width: calc(100% - 32px);
+    padding: 12px 16px; border-radius: 14px; background: #2c2c2e; color: #fff; font-size: 15px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    transform: translate(-50%, 140%); transition: transform 0.25s ease;
+  }
+  .toast.show { transform: translate(-50%, 0); }
+  .toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toast button { color: #64d2ff; font-weight: 700; flex: none; }
+
+  /* Action sheet */
+  .sheet-backdrop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.35);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+    animation: fade-in 0.15s ease;
+  }
+  .sheet { width: 100%; max-width: 540px; animation: slide-up 0.22s ease; }
+  .sheet-group { background: var(--surface); border-radius: 14px; overflow: hidden; margin-top: 8px; }
+  .sheet-title { padding: 14px 16px; text-align: center; font-size: 13px; color: var(--muted); border-bottom: 0.5px solid var(--line); }
+  .sheet-group > button {
+    display: block; width: 100%; padding: 16px; font-size: 18px; color: var(--accent);
+    border-bottom: 0.5px solid var(--line);
+  }
+  .sheet-group > button:last-child { border-bottom: 0; }
+  .sheet-group > button.danger { color: var(--danger); }
+  .sheet-group > button.cancel { font-weight: 600; }
+  .sheet-group > button:active { background: var(--field); }
+  .settings { padding: 16px; display: grid; gap: 14px; font-size: 15px; }
+  .settings label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+  .settings input[type="text"] { padding: 10px 12px; border: 0; border-radius: 10px; background: var(--field); font-size: 16px; color: var(--text); outline: none; }
+  .settings .toggle { display: flex; align-items: center; justify-content: space-between; color: var(--text); font-size: 16px; }
+  .settings .toggle input { width: 22px; height: 22px; accent-color: var(--green); }
+  .settings .status { color: var(--muted); font-size: 13px; }
+  @keyframes fade-in { from { opacity: 0; } }
+  @keyframes slide-up { from { transform: translateY(40px); opacity: 0; } }
+
+  /* Sign in */
+  .signin { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .signin-card { max-width: 380px; text-align: center; }
+  .signin-card img { width: 84px; height: 84px; border-radius: 20px; box-shadow: var(--shadow); }
+  .signin-card h2 { font-size: 26px; margin: 18px 0 8px; letter-spacing: -0.01em; }
+  .signin-card p { color: var(--muted); margin: 0 0 22px; font-size: 16px; }
+  .signin-card code { font: 600 14px ui-monospace, Menlo, monospace; color: var(--text); }
+  .primary {
+    width: 100%; padding: 15px; border-radius: 14px; background: var(--accent); color: #fff;
+    font-size: 17px; font-weight: 600;
+  }
+  .signin details { margin-top: 22px; text-align: left; font-size: 15px; color: var(--muted); }
+  .signin summary { cursor: pointer; text-align: center; }
+  .signin .code-row { display: flex; gap: 8px; margin-top: 10px; }
+  .signin .code-row input { flex: 1; min-width: 0; padding: 10px 12px; border: 0; border-radius: 10px; background: var(--field); font-size: 16px; outline: none; }
+  .signin .code-row button, .linkish { color: var(--accent); font-weight: 600; }
+  .note { margin-top: 18px; font-size: 14px; color: var(--danger); }
+
+  /* Full-screen celebration */
+  .celebration { position: fixed; inset: 0; z-index: 100; pointer-events: none; display: none; }
+  .celebration.play { display: block; animation: overlay-out 0.6s ease-in 4.6s forwards; }
+  .celebration canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; }
+  .celebration .dim {
+    position: absolute; inset: 0; opacity: 0;
+    background: radial-gradient(circle at center, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.12) 75%);
+  }
+  .celebration .message {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px; padding: 24px; text-align: center; color: #fff; opacity: 0;
+  }
+  .celebration.play .dim { animation: fade-to-1 0.3s ease-out forwards, fade-to-0 0.4s ease-in 3.9s forwards; }
+  .celebration.play .message { animation: message-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, message-out 0.4s ease-in 3.9s forwards; }
+  .bigcheck svg { width: 150px; height: 150px; overflow: visible; }
+  .bigcheck .disc { fill: url(#discGradient); filter: drop-shadow(0 0 26px rgba(48, 209, 88, 0.8)); }
+  .bigcheck .big-tick { fill: none; stroke: #fff; stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 70; stroke-dashoffset: 70; }
+  .bigcheck .wave { fill: none; stroke: #30d158; stroke-width: 4; transform-origin: 60px 60px; opacity: 0; }
+  .celebration.play .big-tick { animation: big-draw 0.35s ease-out 0.2s forwards; }
+  .celebration.play .wave { animation: wave 0.9s ease-out 0.25s forwards; }
+  .celebration.play .wave.second { animation-name: wave-far; }
+  .cheer {
+    max-width: 1100px; margin: 0;
+    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-weight: 900; font-stretch: condensed; font-size: clamp(52px, 16vw, 96px); line-height: 0.95;
+    letter-spacing: -0.01em; text-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  }
+  .cheer.long { font-size: clamp(34px, 9.5vw, 64px); line-height: 1.02; }
+  .done-title {
+    max-width: 700px; font-size: clamp(18px, 5vw, 26px); font-weight: 600; opacity: 0.85;
+    text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.7);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .all-done { font-size: 20px; font-weight: 500; opacity: 0.75; }
+  @keyframes fade-to-1 { to { opacity: 1; } }
+  @keyframes fade-to-0 { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes message-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+  @keyframes message-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-40px); } }
+  @keyframes overlay-out { to { opacity: 0; } }
+  @keyframes big-draw { to { stroke-dashoffset: 0; } }
+  @keyframes wave { from { transform: scale(1); opacity: 1; } to { transform: scale(2.4); opacity: 0; } }
+  @keyframes wave-far { from { transform: scale(1); opacity: 1; } to { transform: scale(3.3); opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .task.shifting, .progress, .toast { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<section class="signin" id="signin" hidden>
+  <div class="signin-card">
+    <img src="icon-180.png" alt="">
+    <h2>Connect your Dropbox</h2>
+    <p>Menu Todo keeps your list in <code id="signinPath"></code>, the same file the Mac app uses.</p>
+    <button class="primary" id="connect">Connect Dropbox</button>
+    <details>
+      <summary>Having trouble signing in?</summary>
+      <p style="margin: 10px 0 0">Get a sign-in code from Dropbox in a new tab, then paste it here.</p>
+      <div class="code-row">
+        <button id="codeStart">Get code</button>
+        <input id="codeInput" placeholder="Paste code" autocomplete="off" autocapitalize="off">
+        <button id="codeSubmit">Sign in</button>
+      </div>
+    </details>
+    <div class="note" id="signinNote" hidden></div>
+  </div>
+</section>
+
+<div class="app" id="app" hidden>
+  <header class="top">
+    <h1>Todo</h1>
+    <span class="sync" id="sync"></span>
+    <button class="icon-btn" id="settingsButton" aria-label="Settings">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="addInput" placeholder="Add a task" enterkeyhint="done">
+    <button id="addButton" aria-label="Add task" disabled>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </form>
+
+  <div class="banner" id="banner" hidden></div>
+  <div class="list" id="list"></div>
+  <div class="empty" id="empty" hidden>Nothing to do. Nice.</div>
+</div>
+
+<div class="toast" id="toast"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
+
+<div class="celebration" id="celebration">
+  <div class="dim"></div>
+  <div class="message">
+    <div class="bigcheck">
+      <svg viewBox="0 0 120 120">
+        <defs>
+          <linearGradient id="discGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#66eb80"/>
+            <stop offset="1" stop-color="#14a64d"/>
+          </linearGradient>
+        </defs>
+        <circle class="wave" cx="60" cy="60" r="50"/>
+        <circle class="wave second" cx="60" cy="60" r="50"/>
+        <circle class="disc" cx="60" cy="60" r="50"/>
+        <path class="big-tick" d="M37 62 L53 78 L84 45"/>
+      </svg>
+    </div>
+    <p class="cheer" id="cheer"></p>
+    <div class="done-title" id="doneTitle"></div>
+    <div class="all-done" id="allDone" hidden>Nothing left on your list 🎉</div>
+  </div>
+  <canvas id="confetti"></canvas>
+</div>
+
+<script src="cheers.js"></script>
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Setup. Paste the App key from your Dropbox app (dropbox.com/developers/apps).
+const DROPBOX_APP_KEY = "";
+const DEFAULT_PATH = "/Menu Todo/tasks.json";
+// ---------------------------------------------------------------------------
+
+const $ = (selector) => document.querySelector(selector);
+const DEMO = new URLSearchParams(location.search).has("demo");
+const storage = {
+  get(key, fallback = null) {
+    try { const value = localStorage.getItem("mt." + key); return value === null ? fallback : JSON.parse(value); }
+    catch { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem("mt." + key, JSON.stringify(value)); } catch {}
+  },
+  remove(key) {
+    try { localStorage.removeItem("mt." + key); } catch {}
+  },
+};
+const filePath = () => storage.get("path", DEFAULT_PATH);
+
+const ICON = {
+  grip: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>',
+  chevron: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  more: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+  plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+};
+
+function escapeHTML(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function uuid() {
+  const id = crypto.randomUUID ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+        (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+  return id.toUpperCase();
+}
+
+// The Mac app reads dates without fractional seconds, so never write milliseconds.
+const isoNow = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
+class AppError extends Error {
+  constructor(kind, message) { super(message || kind); this.kind = kind; }
+}
+
+// ---------------------------------------------------------------------------
+// Dropbox sign-in (OAuth with PKCE, no server needed)
+
+const Auth = {
+  redirectURI: () => location.origin + location.pathname,
+
+  async start(manual = false) {
+    const verifier = base64url(crypto.getRandomValues(new Uint8Array(48)));
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    storage.set("verifier", verifier);
+    const params = new URLSearchParams({
+      client_id: DROPBOX_APP_KEY,
+      response_type: "code",
+      code_challenge: base64url(new Uint8Array(digest)),
+      code_challenge_method: "S256",
+      token_access_type: "offline",
+    });
+    if (!manual) params.set("redirect_uri", Auth.redirectURI());
+    const url = "https://www.dropbox.com/oauth2/authorize?" + params;
+    if (manual) window.open(url, "_blank"); else location.href = url;
+  },
+
+  /** Finishes sign-in when Dropbox sends us back with ?code=. */
+  async handleRedirect() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    if (!code && !params.get("error")) return;
+    history.replaceState(null, "", location.pathname);
+    if (params.get("error")) throw new AppError("auth", params.get("error_description") || "Sign-in was cancelled.");
+    await Auth.exchange(code, true);
+  },
+
+  async exchange(code, withRedirect) {
+    const verifier = storage.get("verifier");
+    if (!verifier) throw new AppError("auth", "Sign-in started somewhere else. Try again from here.");
+    const body = new URLSearchParams({ code, grant_type: "authorization_code", code_verifier: verifier, client_id: DROPBOX_APP_KEY });
+    if (withRedirect) body.set("redirect_uri", Auth.redirectURI());
+    await Auth.requestToken(body);
+    storage.remove("verifier");
+  },
+
+  async requestToken(body) {
+    const res = await fetch("https://api.dropboxapi.com/oauth2/token", { method: "POST", body });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new AppError("auth", json.error_description || "Dropbox didn't accept the sign-in.");
+    const saved = storage.get("auth", {});
+    storage.set("auth", {
+      access: json.access_token,
+      expires: Date.now() + (json.expires_in - 60) * 1000,
+      refresh: json.refresh_token || saved.refresh,
+    });
+  },
+
+  signedIn: () => Boolean(storage.get("auth")?.refresh),
+
+  async token() {
+    const auth = storage.get("auth");
+    if (!auth) throw new AppError("signedout");
+    if (auth.access && auth.expires > Date.now()) return auth.access;
+    await Auth.requestToken(new URLSearchParams({ grant_type: "refresh_token", refresh_token: auth.refresh, client_id: DROPBOX_APP_KEY }));
+    return storage.get("auth").access;
+  },
+
+  expire() {
+    const auth = storage.get("auth");
+    if (auth) storage.set("auth", { ...auth, expires: 0 });
+  },
+
+  signOut() { storage.remove("auth"); },
+};
+
+function base64url(bytes) {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// ---------------------------------------------------------------------------
+// Where the list lives: Dropbox, or the browser for ?demo
+
+const DropboxBackend = {
+  async call(url, { arg, json, body } = {}, retried = false) {
+    const headers = { Authorization: "Bearer " + await Auth.token() };
+    // Header values must be ASCII, so escape anything else (like accented folder names).
+    if (arg) headers["Dropbox-API-Arg"] = JSON.stringify(arg).replace(/[\u007f-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+    if (json) headers["Content-Type"] = "application/json";
+    else if (body != null) headers["Content-Type"] = "application/octet-stream";
+    let res;
+    try {
+      res = await fetch(url, { method: "POST", headers, body: json ? JSON.stringify(json) : body });
+    } catch {
+      throw new AppError("offline", "Can't reach Dropbox.");
+    }
+    if (res.status === 401 && !retried) {
+      Auth.expire();
+      return DropboxBackend.call(url, { arg, json, body }, true);
+    }
+    if (res.status === 401) { Auth.signOut(); throw new AppError("signedout"); }
+    if (res.status === 429 || res.status >= 500) throw new AppError("offline", "Dropbox is busy. Retrying…");
+    return res;
+  },
+
+  async errorSummary(res) {
+    const json = await res.json().catch(() => ({}));
+    return json.error_summary || "";
+  },
+
+  async load() {
+    const res = await DropboxBackend.call("https://content.dropboxapi.com/2/files/download", { arg: { path: filePath() } });
+    if (res.status === 409) {
+      const summary = await DropboxBackend.errorSummary(res);
+      if (summary.startsWith("path/not_found")) throw new AppError("notfound");
+      throw new AppError("dropbox", summary);
+    }
+    if (!res.ok) throw new AppError("dropbox", "Dropbox error " + res.status);
+    const result = res.headers.get("Dropbox-API-Result");
+    const text = await res.text();
+    const rev = result ? JSON.parse(result).rev : await DropboxBackend.rev();
+    return { text, rev };
+  },
+
+  async rev() {
+    const res = await DropboxBackend.call("https://api.dropboxapi.com/2/files/get_metadata", { json: { path: filePath() } });
+    if (res.status === 409) return null;
+    if (!res.ok) throw new AppError("dropbox", "Dropbox error " + res.status);
+    return (await res.json()).rev;
+  },
+
+  /** Saves only if the file is still at `rev`, so we never overwrite a change from another device. */
+  async save(text, rev) {
+    const res = await DropboxBackend.call("https://content.dropboxapi.com/2/files/upload", {
+      arg: {
+        path: filePath(),
+        mode: rev ? { ".tag": "update", update: rev } : { ".tag": "add" },
+        autorename: false,
+        mute: true,
+        strict_conflict: true,
+      },
+      body: text,
+    });
+    if (res.status === 409) {
+      const summary = await DropboxBackend.errorSummary(res);
+      if (summary.includes("conflict")) throw new AppError("conflict");
+      throw new AppError("dropbox", summary);
+    }
+    if (!res.ok) throw new AppError("dropbox", "Dropbox error " + res.status);
+    return (await res.json()).rev;
+  },
+};
+
+const DemoBackend = {
+  seed() {
+    const task = (title, steps = []) => ({ id: uuid(), title, created: isoNow(), steps: steps.map(([t, done]) => ({ id: uuid(), title: t, done })) });
+    return JSON.stringify({
+      version: 1,
+      tasks: [
+        task("Move lessons on Thursday", [["Email students", true], ["Update calendar", false], ["Text Sam", false]]),
+        task("Stems for ESL"),
+        task("Send Mailchimp to clients"),
+        task("Call the dentist about Tuesday"),
+      ],
+    });
+  },
+  async load() {
+    let saved = storage.get("demo");
+    if (!saved) { saved = { text: DemoBackend.seed(), rev: "1" }; storage.set("demo", saved); }
+    return saved;
+  },
+  async rev() { return storage.get("demo")?.rev ?? null; },
+  async save(text, rev) {
+    const saved = storage.get("demo");
+    if (saved && rev && saved.rev !== rev) throw new AppError("conflict");
+    const next = String(Number(saved?.rev || 0) + 1);
+    storage.set("demo", { text, rev: next });
+    return next;
+  },
+};
+
+const backend = DEMO ? DemoBackend : DropboxBackend;
+
+// ---------------------------------------------------------------------------
+// The list, and edits as replayable operations (by id, so they still apply
+// cleanly on top of a newer copy if someone else saved first)
+
+const state = {
+  tasks: [],
+  extra: {},
+  rev: null,
+  ready: false,
+  editing: null,           // { task, step? }
+  addingStep: null,        // task id
+  collapsed: new Set(storage.get("collapsed", [])),
+  justDone: new Set(),
+};
+
+const findTask = (tasks, id) => tasks.find((t) => t.id === id);
+const clone = (value) => JSON.parse(JSON.stringify(value));
+
+const ops = {
+  add: (task) => (tasks) => { if (!findTask(tasks, task.id)) tasks.push(clone(task)); },
+  remove: (id) => (tasks) => { const i = tasks.findIndex((t) => t.id === id); if (i >= 0) tasks.splice(i, 1); },
+  insert: (task, index) => (tasks) => { if (!findTask(tasks, task.id)) tasks.splice(Math.min(index, tasks.length), 0, clone(task)); },
+  rename: (id, title) => (tasks) => { const t = findTask(tasks, id); if (t) t.title = title; },
+  move: (id, to) => (tasks) => {
+    const i = tasks.findIndex((t) => t.id === id);
+    if (i < 0) return;
+    const [task] = tasks.splice(i, 1);
+    tasks.splice(Math.min(to, tasks.length), 0, task);
+  },
+  addStep: (id, step) => (tasks) => {
+    const t = findTask(tasks, id);
+    if (t && !t.steps.some((s) => s.id === step.id)) t.steps.push(clone(step));
+  },
+  step: (id, stepID, change) => (tasks) => {
+    const s = findTask(tasks, id)?.steps.find((s) => s.id === stepID);
+    if (s) change(s);
+  },
+  removeStep: (id, stepID) => (tasks) => {
+    const t = findTask(tasks, id);
+    if (t) t.steps = t.steps.filter((s) => s.id !== stepID);
+  },
+  moveStep: (id, stepID, offset) => (tasks) => {
+    const t = findTask(tasks, id);
+    const i = t ? t.steps.findIndex((s) => s.id === stepID) : -1;
+    if (i < 0 || !t.steps[i + offset]) return;
+    [t.steps[i], t.steps[i + offset]] = [t.steps[i + offset], t.steps[i]];
+  },
+  stepToTask: (id, stepID, newTask) => (tasks) => {
+    const index = tasks.findIndex((t) => t.id === id);
+    if (index < 0 || findTask(tasks, newTask.id)) return;
+    tasks[index].steps = tasks[index].steps.filter((s) => s.id !== stepID);
+    tasks.splice(index + 1, 0, clone(newTask));
+  },
+};
+
+function parseFile(text) {
+  const file = text.trim() ? JSON.parse(text) : { tasks: [] };
+  const { tasks = [], ...extra } = file;
+  tasks.forEach((t) => { t.steps = Array.isArray(t.steps) ? t.steps : []; });
+  return { tasks, extra };
+}
+
+function sortKeys(value) {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortKeys(value[key])]));
+  }
+  return value;
+}
+
+const serialize = () => JSON.stringify(sortKeys({ ...state.extra, version: 1, tasks: state.tasks }), null, 2) + "\n";
+
+// Saving
+
+let pending = [];
+let saving = false;
+let retryTimer = null;
+
+function mutate(op) {
+  op(state.tasks);
+  pending.push(op);
+  render();
+  flush();
+}
+
+async function flush() {
+  if (saving || !pending.length) return;
+  saving = true;
+  clearTimeout(retryTimer);
+  setSync("saving");
+  try {
+    while (pending.length) {
+      const batch = pending.slice();
+      for (let attempt = 0; ; attempt++) {
+        try {
+          state.rev = await backend.save(serialize(), state.rev);
+          break;
+        } catch (error) {
+          if (error.kind !== "conflict" || attempt >= 3) throw error;
+          // Someone else saved first: start from their version and redo our edits on top.
+          const latest = await backend.load();
+          const parsed = parseFile(latest.text);
+          state.tasks = parsed.tasks;
+          state.extra = parsed.extra;
+          state.rev = latest.rev;
+          pending.forEach((op) => op(state.tasks));
+          render();
+        }
+      }
+      pending = pending.slice(batch.length);
+    }
+    setSync("synced");
+  } catch (error) {
+    handleError(error);
+    retryTimer = setTimeout(flush, 5000);
+  } finally {
+    saving = false;
+  }
+}
+
+async function reload() {
+  try {
+    const { text, rev } = await backend.load();
+    let parsed;
+    try {
+      parsed = parseFile(text);
+    } catch {
+      throw new AppError("corrupt");
+    }
+    state.tasks = parsed.tasks;
+    state.extra = parsed.extra;
+    state.rev = rev;
+    state.ready = true;
+    showBanner(null);
+    setSync("synced");
+    render();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function poll() {
+  if (!state.ready || document.hidden || saving || pending.length || drag) return;
+  try {
+    const rev = await backend.rev();
+    if (rev && rev !== state.rev) await reload();
+    else setSync("synced");
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+function handleError(error) {
+  switch (error.kind) {
+    case "signedout":
+      showSignIn();
+      break;
+    case "notfound":
+      state.ready = false;
+      showBanner(`Couldn't find <b>${escapeHTML(filePath())}</b> in your Dropbox.`, [
+        ["Create it", createFile],
+        ["Change file", openSettings],
+      ]);
+      setSync("error", "No file");
+      break;
+    case "corrupt":
+      state.ready = false;
+      showBanner("Your list file isn't valid JSON, so it wasn't changed. Fix it on your Mac, or choose another file.", [["Change file", openSettings]]);
+      setSync("error", "Can't read");
+      break;
+    case "offline":
+      setSync("error", "Offline");
+      break;
+    default:
+      setSync("error", "Sync error");
+      console.error(error);
+  }
+}
+
+async function createFile() {
+  state.tasks = [];
+  state.extra = {};
+  state.rev = null;
+  try {
+    state.rev = await backend.save(serialize(), null);
+    await reload();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+
+const list = $("#list");
+let holdRender = 0;
+let renderQueued = false;
+let rendering = false;
+
+function render() {
+  const editingNow = state.editing && document.activeElement?.matches?.("[data-edit]");
+  if (holdRender > 0 || drag) { renderQueued = true; return; }
+  renderQueued = false;
+
+  const before = new Map([...list.children].map((el) => [el.dataset.id, el.getBoundingClientRect().top]));
+  const focusedValue = editingNow ? document.activeElement.value : null;
+
+  rendering = true;
+  list.innerHTML = state.tasks.map(taskHTML).join("");
+  rendering = false;
+  $("#empty").hidden = !state.ready || state.tasks.length > 0;
+
+  // Slide rows that moved instead of letting them jump.
+  for (const el of list.children) {
+    const top = before.get(el.dataset.id);
+    if (top === undefined) continue;
+    const delta = top - el.getBoundingClientRect().top;
+    if (Math.abs(delta) < 1) continue;
+    el.style.transition = "none";
+    el.style.transform = `translateY(${delta}px)`;
+    el.getBoundingClientRect();
+    el.style.transition = "transform 0.25s ease";
+    el.style.transform = "";
+    el.addEventListener("transitionend", () => { el.style.transition = ""; }, { once: true });
+  }
+
+  const input = list.querySelector("[data-edit], [data-add-step]");
+  if (input) {
+    if (focusedValue !== null && input.matches("[data-edit]")) input.value = focusedValue;
+    input.focus({ preventScroll: true });
+    if (input.matches("[data-edit]")) input.setSelectionRange(input.value.length, input.value.length);
+  }
+}
+
+function releaseRender() {
+  holdRender = Math.max(0, holdRender - 1);
+  if (renderQueued) render();
+}
+
+function checkSVG(progress = 0) {
+  const offset = 62.83 * (1 - progress);
+  return `<svg viewBox="0 0 24 24">
+    <circle class="ring" cx="12" cy="12" r="10"/>
+    ${progress > 0 ? `<circle class="progress" cx="12" cy="12" r="10" style="stroke-dashoffset:${offset}"/>` : ""}
+    <circle class="fill" cx="12" cy="12" r="11"/>
+    <path class="tick" d="M7.5 12.5l3 3 6-6.5"/>
+  </svg>`;
+}
+
+function taskHTML(task, index) {
+  const steps = task.steps;
+  const done = steps.filter((s) => s.done).length;
+  const collapsed = state.collapsed.has(task.id);
+  const adding = state.addingStep === task.id;
+  const editingTitle = state.editing?.task === task.id && !state.editing.step;
+  const current = steps.find((s) => !s.done);
+  const classes = ["task", index === 0 && "next", collapsed && steps.length && "collapsed"].filter(Boolean).join(" ");
+
+  const title = editingTitle
+    ? `<input class="edit-input" data-edit="task" value="${escapeHTML(task.title)}" enterkeyhint="done">`
+    : `<div class="title" data-action="edit-task">${escapeHTML(task.title)}</div>`;
+
+  let stepsHTML = "";
+  if ((steps.length && !collapsed) || adding) {
+    const rows = collapsed ? [] : steps.map((step) => stepHTML(task, step, step === current));
+    const addRow = adding
+      ? `<div class="add-step">${ICON.plus}<input data-add-step placeholder="Add a step" enterkeyhint="next"></div>`
+      : `<button class="add-step" data-action="add-step">${ICON.plus}Add step</button>`;
+    stepsHTML = `<div class="steps">${rows.join("")}${addRow}</div>`;
+  }
+
+  const count = steps.length
+    ? `<button class="count" data-action="toggle" aria-label="Show or hide steps">${done}/${steps.length}${ICON.chevron}</button>`
+    : "";
+  // The next task gets its label and step count above the title, so the title can use the full width.
+  const body = index === 0
+    ? `<div class="title-wrap"><div class="eyebrow"><span class="badge">NEXT</span>${count}</div>${title}</div>`
+    : title + count;
+
+  return `<div class="${classes}" data-id="${task.id}">
+    <div class="row">
+      <span class="handle" aria-label="Drag to reorder">${ICON.grip}</span>
+      <button class="check" data-action="complete-task" aria-label="${steps.length ? "Mark the whole task done" : "Mark done"}">${checkSVG(steps.length ? done / steps.length : 0)}</button>
+      ${body}
+      <button class="more" data-action="task-menu" aria-label="More">${ICON.more}</button>
+    </div>
+    ${stepsHTML}
+  </div>`;
+}
+
+function stepHTML(task, step, isCurrent) {
+  const editing = state.editing?.task === task.id && state.editing.step === step.id;
+  const classes = ["step", step.done && "done", isCurrent && "current", state.justDone.has(step.id) && "just-done"].filter(Boolean).join(" ");
+  const title = editing
+    ? `<input class="edit-input" data-edit="step" value="${escapeHTML(step.title)}" enterkeyhint="done">`
+    : `<div class="title" data-action="edit-step">${escapeHTML(step.title)}</div>`;
+  return `<div class="${classes}" data-step="${step.id}">
+    <button class="check" data-action="toggle-step" aria-label="${step.done ? "Mark not done" : "Mark done"}">${checkSVG()}</button>
+    ${title}
+    <button class="more" data-action="step-menu" aria-label="More">${ICON.more}</button>
+  </div>`;
+}
+
+function setSync(kind, label) {
+  const el = $("#sync");
+  el.className = "sync " + kind;
+  el.textContent = label || { synced: DEMO ? "Demo" : "Synced", saving: "Saving…", error: "Sync error" }[kind];
+}
+
+function showBanner(html, actions = []) {
+  const banner = $("#banner");
+  banner.hidden = !html;
+  if (!html) return;
+  banner.innerHTML = `<span>${html}</span>`;
+  for (const [label, run] of actions) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.onclick = run;
+    banner.append(button);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Completing things
+
+function miniBurst(checkEl) {
+  if (!checkEl) return;
+  const colors = ["#ff375f", "#ff9f0a", "#ffd60a", "#30d158", "#0a84ff", "#bf5af2"];
+  const burst = document.createElement("span");
+  burst.className = "burst";
+  burst.innerHTML = Array.from({ length: 10 }, (_, i) =>
+    `<i style="--a:${i * 36}deg;--d:${i % 2 ? 15 : 22}px;--c:${colors[i % colors.length]}"></i>`).join("");
+  checkEl.append(burst);
+  setTimeout(() => burst.remove(), 700);
+}
+
+function centerOf(el) {
+  const r = el.getBoundingClientRect();
+  return [r.left + r.width / 2, r.top + r.height / 2];
+}
+
+let undo = null;
+let toastTimer = null;
+
+function completeTask(id) {
+  const el = list.querySelector(`.task[data-id="${id}"]`);
+  const task = findTask(state.tasks, id);
+  if (!el || !task || el.classList.contains("completing")) return;
+  const check = el.querySelector(".row .check");
+  const [x, y] = centerOf(check);
+  Celebration.play(task.title, state.tasks.length === 1, x, y);
+  navigator.vibrate?.(20);
+
+  holdRender++;
+  el.classList.add("completing");
+  miniBurst(check);
+  setTimeout(() => el.classList.add("leaving"), 450);
+  setTimeout(() => {
+    const index = state.tasks.findIndex((t) => t.id === id);
+    releaseRender();
+    mutate(ops.remove(id));
+    showUndo(clone(task), index);
+  }, 750);
+}
+
+function toggleStep(taskID, stepID) {
+  const task = findTask(state.tasks, taskID);
+  const step = task?.steps.find((s) => s.id === stepID);
+  if (!step) return;
+  if (step.done) {
+    mutate(ops.step(taskID, stepID, (s) => { s.done = false; }));
+    return;
+  }
+  const finishesTask = task.steps.filter((s) => !s.done).length === 1;
+  state.justDone.add(stepID);
+  setTimeout(() => state.justDone.delete(stepID), 800);
+  mutate(ops.step(taskID, stepID, (s) => { s.done = true; }));
+  miniBurst(list.querySelector(`.step[data-step="${stepID}"] .check`));
+  navigator.vibrate?.(10);
+  if (finishesTask) setTimeout(() => completeTask(taskID), 350);
+}
+
+function showUndo(task, index) {
+  undo = { task, index };
+  $("#toastText").textContent = "Done: " + task.title;
+  $("#toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideUndo, 5000);
+}
+
+function hideUndo() {
+  undo = null;
+  $("#toast").classList.remove("show");
+}
+
+$("#toastUndo").addEventListener("click", () => {
+  if (!undo) return;
+  const { task, index } = undo;
+  // Bring it back with its last step open again, or it would look finished.
+  if (task.steps.length && task.steps.every((s) => s.done)) task.steps[task.steps.length - 1].done = false;
+  hideUndo();
+  mutate(ops.insert(task, index));
+});
+
+// ---------------------------------------------------------------------------
+// Taps, typing, and menus
+
+list.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-action]");
+  if (!target) return;
+  const taskID = target.closest(".task")?.dataset.id;
+  const stepID = target.closest(".step")?.dataset.step;
+  const task = findTask(state.tasks, taskID);
+  if (!task) return;
+
+  switch (target.dataset.action) {
+    case "complete-task":
+      completeTask(taskID);
+      break;
+    case "toggle":
+      if (state.collapsed.has(taskID)) state.collapsed.delete(taskID); else state.collapsed.add(taskID);
+      storage.set("collapsed", [...state.collapsed]);
+      render();
+      break;
+    case "edit-task":
+      startEditing({ task: taskID });
+      break;
+    case "edit-step":
+      startEditing({ task: taskID, step: stepID });
+      break;
+    case "toggle-step":
+      toggleStep(taskID, stepID);
+      break;
+    case "add-step":
+      startAddingStep(taskID);
+      break;
+    case "task-menu":
+      taskMenu(task);
+      break;
+    case "step-menu":
+      stepMenu(task, task.steps.find((s) => s.id === stepID));
+      break;
+  }
+});
+
+function startEditing(target) {
+  state.editing = target;
+  state.addingStep = null;
+  render();
+}
+
+function startAddingStep(taskID) {
+  state.collapsed.delete(taskID);
+  state.addingStep = taskID;
+  state.editing = null;
+  render();
+}
+
+function commitEdit(input) {
+  const editing = state.editing;
+  if (!editing) return;
+  state.editing = null;
+  const title = input.value.trim();
+  if (title) {
+    mutate(editing.step
+      ? ops.step(editing.task, editing.step, (s) => { s.title = title; })
+      : ops.rename(editing.task, title));
+  } else {
+    render();
+  }
+}
+
+function commitStep(input, keepOpen) {
+  const taskID = state.addingStep;
+  if (!taskID) return;
+  const title = input.value.trim();
+  if (!keepOpen || !title) state.addingStep = null;
+  if (title) mutate(ops.addStep(taskID, { id: uuid(), title, done: false }));
+  else render();
+}
+
+list.addEventListener("keydown", (event) => {
+  const input = event.target;
+  if (input.matches("[data-edit]")) {
+    if (event.key === "Enter") { event.preventDefault(); commitEdit(input); }
+    if (event.key === "Escape") { state.editing = null; render(); }
+  } else if (input.matches("[data-add-step]")) {
+    // Enter adds a step and keeps the field open for the next one.
+    if (event.key === "Enter") { event.preventDefault(); commitStep(input, true); }
+    if (event.key === "Escape") { state.addingStep = null; render(); }
+  }
+});
+
+list.addEventListener("focusout", (event) => {
+  if (rendering) return;
+  const input = event.target;
+  if (input.matches("[data-edit]")) commitEdit(input);
+  else if (input.matches("[data-add-step]")) commitStep(input, false);
+});
+
+$("#addInput").addEventListener("input", (e) => { $("#addButton").disabled = !e.target.value.trim(); });
+$("#addForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = $("#addInput");
+  const title = input.value.trim();
+  if (!title || !state.ready) return;
+  mutate(ops.add({ id: uuid(), title, created: isoNow(), steps: [] }));
+  input.value = "";
+  $("#addButton").disabled = true;
+});
+
+function openSheet(build) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "sheet-backdrop";
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+  backdrop.append(sheet);
+  const close = () => backdrop.remove();
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  build(sheet, close);
+  document.body.append(backdrop);
+  return close;
+}
+
+function actionSheet(title, actions) {
+  openSheet((sheet, close) => {
+    const group = document.createElement("div");
+    group.className = "sheet-group";
+    group.innerHTML = `<div class="sheet-title">${escapeHTML(title)}</div>`;
+    for (const action of actions) {
+      const button = document.createElement("button");
+      button.textContent = action.label;
+      if (action.danger) button.className = "danger";
+      button.onclick = () => { close(); action.run(); };
+      group.append(button);
+    }
+    const cancel = document.createElement("div");
+    cancel.className = "sheet-group";
+    cancel.innerHTML = '<button class="cancel">Cancel</button>';
+    cancel.firstChild.onclick = close;
+    sheet.append(group, cancel);
+  });
+}
+
+function taskMenu(task) {
+  const index = state.tasks.indexOf(task);
+  actionSheet(task.title, [
+    { label: "Edit", run: () => startEditing({ task: task.id }) },
+    { label: "Add Step", run: () => startAddingStep(task.id) },
+    ...(index > 0 ? [{ label: "Make Next", run: () => mutate(ops.move(task.id, 0)) }] : []),
+    ...(index < state.tasks.length - 1 ? [{ label: "Move to Bottom", run: () => mutate(ops.move(task.id, state.tasks.length)) }] : []),
+    { label: "Delete", danger: true, run: () => mutate(ops.remove(task.id)) },
+  ]);
+}
+
+function stepMenu(task, step) {
+  if (!step) return;
+  const index = task.steps.indexOf(step);
+  actionSheet(step.title, [
+    { label: "Edit", run: () => startEditing({ task: task.id, step: step.id }) },
+    ...(index > 0 ? [{ label: "Move Up", run: () => mutate(ops.moveStep(task.id, step.id, -1)) }] : []),
+    ...(index < task.steps.length - 1 ? [{ label: "Move Down", run: () => mutate(ops.moveStep(task.id, step.id, 1)) }] : []),
+    { label: "Make Separate Task", run: () => mutate(ops.stepToTask(task.id, step.id, { id: uuid(), title: step.title, created: isoNow(), steps: [] })) },
+    { label: "Delete", danger: true, run: () => mutate(ops.removeStep(task.id, step.id)) },
+  ]);
+}
+
+function openSettings() {
+  openSheet((sheet, close) => {
+    const group = document.createElement("div");
+    group.className = "sheet-group";
+    group.innerHTML = `
+      <div class="settings">
+        <label>Dropbox file
+          <input type="text" id="pathInput" value="${escapeHTML(filePath())}" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </label>
+        <div class="toggle">Big celebrations <input type="checkbox" id="celebrateToggle" ${Celebration.enabled() ? "checked" : ""}></div>
+        <div class="status">${DEMO ? "Demo mode: changes stay in this browser." : "Pick the same file as the Mac app to stay in sync."}</div>
+      </div>
+      <button id="savePath">Save</button>
+      ${DEMO ? "" : '<button class="danger" id="signOut">Sign Out of Dropbox</button>'}`;
+    const cancel = document.createElement("div");
+    cancel.className = "sheet-group";
+    cancel.innerHTML = '<button class="cancel">Done</button>';
+    cancel.firstChild.onclick = close;
+    sheet.append(group, cancel);
+
+    group.querySelector("#celebrateToggle").onchange = (e) => storage.set("celebrate", e.target.checked);
+    group.querySelector("#savePath").onclick = () => {
+      let path = group.querySelector("#pathInput").value.trim() || DEFAULT_PATH;
+      if (!path.startsWith("/")) path = "/" + path;
+      storage.set("path", path);
+      close();
+      state.rev = null;
+      reload();
+    };
+    group.querySelector("#signOut")?.addEventListener("click", () => {
+      Auth.signOut();
+      close();
+      showSignIn();
+    });
+  });
+}
+
+$("#settingsButton").addEventListener("click", openSettings);
+
+// ---------------------------------------------------------------------------
+// Drag to reorder (touch or mouse, by the handle)
+
+let drag = null;
+const GAP = 8;
+
+list.addEventListener("pointerdown", (event) => {
+  const handle = event.target.closest(".handle");
+  if (!handle || drag) return;
+  event.preventDefault();
+  const el = handle.closest(".task");
+  const items = [...list.children];
+  const from = items.indexOf(el);
+  drag = {
+    el, items, from, to: from,
+    id: el.dataset.id,
+    startY: event.clientY,
+    rects: items.map((item) => item.getBoundingClientRect()),
+  };
+  handle.setPointerCapture(event.pointerId);
+  el.classList.add("dragging");
+  items.forEach((item) => item !== el && item.classList.add("shifting"));
+  navigator.vibrate?.(8);
+});
+
+list.addEventListener("pointermove", (event) => {
+  if (!drag) return;
+  const { el, items, from, rects } = drag;
+  const dy = event.clientY - drag.startY;
+  el.style.transform = `translateY(${dy}px) scale(1.02)`;
+
+  // Passed a neighbor once the dragged row's middle crosses that neighbor's middle.
+  const middle = rects[from].top + rects[from].height / 2 + dy;
+  let to = from;
+  for (let i = from + 1; i < items.length; i++) if (middle > rects[i].top + rects[i].height / 2) to = i;
+  for (let i = from - 1; i >= 0; i--) if (middle < rects[i].top + rects[i].height / 2) to = i;
+  drag.to = to;
+
+  const shift = rects[from].height + GAP;
+  items.forEach((item, i) => {
+    if (item === el) return;
+    let offset = 0;
+    if (from < to && i > from && i <= to) offset = -shift;
+    if (to < from && i >= to && i < from) offset = shift;
+    item.style.transform = offset ? `translateY(${offset}px)` : "";
+  });
+});
+
+function endDrag() {
+  if (!drag) return;
+  const { el, items, from, to, id, rects } = drag;
+  let slot = 0;
+  if (to > from) slot = rects[to].bottom - rects[from].bottom;
+  if (to < from) slot = rects[to].top - rects[from].top;
+  el.style.transition = "transform 0.15s ease";
+  el.style.transform = `translateY(${slot}px)`;
+  setTimeout(() => {
+    items.forEach((item) => { item.classList.remove("shifting", "dragging"); item.style.transform = ""; item.style.transition = ""; });
+    drag = null;
+    if (to !== from) mutate(ops.move(id, to));
+    else render();
+    poll();
+  }, 150);
+}
+
+list.addEventListener("pointerup", endDrag);
+list.addEventListener("pointercancel", endDrag);
+
+// ---------------------------------------------------------------------------
+// Full-screen celebration: canvas confetti plus the big checkmark and cheer
+
+const Celebration = (() => {
+  const root = $("#celebration");
+  const canvas = $("#confetti");
+  const ctx = canvas.getContext("2d");
+  const colors = ["#ff375f", "#ff9f0a", "#ffd60a", "#30d158", "#64d2ff", "#0a84ff", "#bf5af2", "#ff453a"];
+  const shapes = ["rect", "strip", "circle", "triangle"];
+  let particles = [];
+  let frame = 0;
+  let lastTime = 0;
+  let showerUntil = 0;
+  let showerCarry = 0;
+  let endTimer = null;
+  let last = null;
+  const rand = (min, max) => min + Math.random() * (max - min);
+
+  function resize() {
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = innerWidth * ratio;
+    canvas.height = innerHeight * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+
+  function spawn(x, y, speed, angle, gravity) {
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      gravity,
+      rotation: rand(0, Math.PI * 2),
+      spin: rand(-10, 10),
+      flip: rand(0, Math.PI * 2),
+      flipSpeed: rand(5, 12),
+      size: rand(0.8, 1.3),
+      shape: shapes[Math.floor(Math.random() * shapes.length)],
+      color: colors[Math.floor(Math.random() * colors.length)],
+      age: 0,
+    });
+  }
+
+  function burst(x, y) {
+    const h = innerHeight;
+    // From near the top, spray down across the screen; otherwise shoot up like a fountain.
+    const fromTop = y < 120;
+    for (let i = 0; i < 380; i++) {
+      if (fromTop) spawn(x, y, rand(0.3, 1.2) * h, Math.PI / 2 + rand(-1.2, 1.2), 0.75 * h);
+      else spawn(x, y, rand(0.85, 1.5) * h, -Math.PI / 2 + rand(-0.7, 0.7), 1.6 * h);
+    }
+  }
+
+  function draw(p) {
+    const s = p.size;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation);
+    ctx.scale(1, Math.cos(p.flip));   // tumbling, like a flat piece of paper
+    ctx.globalAlpha = p.age > 3.2 ? Math.max(0, (4 - p.age) / 0.8) : 1;
+    ctx.fillStyle = p.color;
+    if (p.shape === "rect") ctx.fillRect(-6 * s, -3.5 * s, 12 * s, 7 * s);
+    else if (p.shape === "strip") ctx.fillRect(-2 * s, -7.5 * s, 4 * s, 15 * s);
+    else if (p.shape === "circle") { ctx.beginPath(); ctx.arc(0, 0, 4 * s, 0, Math.PI * 2); ctx.fill(); }
+    else { ctx.beginPath(); ctx.moveTo(0, -5 * s); ctx.lineTo(5 * s, 4 * s); ctx.lineTo(-5 * s, 4 * s); ctx.fill(); }
+    ctx.restore();
+  }
+
+  function tick(time) {
+    const dt = Math.min(0.033, (time - lastTime) / 1000 || 0.016);
+    lastTime = time;
+    if (time < showerUntil) {
+      showerCarry += dt * 130;
+      for (; showerCarry >= 1; showerCarry--) {
+        spawn(rand(0, innerWidth), -20, rand(0.12, 0.35) * innerHeight, Math.PI / 2 + rand(-0.3, 0.3), 0.35 * innerHeight);
+      }
+    }
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    const air = 1 - 0.9 * dt;
+    particles = particles.filter((p) => {
+      p.age += dt;
+      p.vx *= air;
+      p.vy = p.vy * air + p.gravity * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rotation += p.spin * dt;
+      p.flip += p.flipSpeed * dt;
+      if (p.age > 4 || p.y > innerHeight + 40) return false;
+      draw(p);
+      return true;
+    });
+    frame = particles.length || time < showerUntil ? requestAnimationFrame(tick) : 0;
+  }
+
+  function pickCheer(allDone) {
+    const cheers = window.CHEERS || { taskDone: ["Hell yeah!"], allDone: ["All done!"] };
+    const pool = (allDone ? cheers.allDone : cheers.taskDone).filter((c) => c !== last);
+    last = pool[Math.floor(Math.random() * pool.length)] || "Hell yeah!";
+    return last;
+  }
+
+  return {
+    enabled: () => storage.get("celebrate", true),
+
+    play(title, allDone, x, y) {
+      if (!this.enabled() || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const cheer = pickCheer(allDone);
+      $("#cheer").textContent = cheer;
+      $("#cheer").classList.toggle("long", cheer.length > 22);
+      $("#doneTitle").textContent = title;
+      $("#allDone").hidden = !allDone;
+
+      // Restart the CSS animations from the top.
+      root.classList.remove("play");
+      void root.offsetWidth;
+      root.classList.add("play");
+      clearTimeout(endTimer);
+      endTimer = setTimeout(() => {
+        root.classList.remove("play");
+        particles = [];
+        showerUntil = 0;
+      }, 5200);
+
+      resize();
+      burst(x, y);
+      showerUntil = performance.now() + (allDone ? 2200 : 1000);
+      if (!frame) {
+        lastTime = performance.now();
+        frame = requestAnimationFrame(tick);
+      }
+    },
+  };
+})();
+
+// ---------------------------------------------------------------------------
+// Start
+
+function showSignIn() {
+  $("#app").hidden = true;
+  $("#signin").hidden = false;
+  $("#signinPath").textContent = filePath();
+  if (!DROPBOX_APP_KEY) {
+    $("#signinNote").hidden = false;
+    $("#signinNote").textContent = "This copy isn't set up yet: add your Dropbox app key near the top of index.html.";
+  }
+}
+
+function showError(message) {
+  $("#signinNote").hidden = false;
+  $("#signinNote").textContent = message;
+}
+
+function showApp() {
+  $("#signin").hidden = true;
+  $("#app").hidden = false;
+  setSync("saving", "Loading…");
+  reload();
+}
+
+$("#connect").addEventListener("click", () => Auth.start(false));
+$("#codeStart").addEventListener("click", () => Auth.start(true));
+$("#codeSubmit").addEventListener("click", async () => {
+  const code = $("#codeInput").value.trim();
+  if (!code) return;
+  try {
+    await Auth.exchange(code, false);
+    showApp();
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+setInterval(poll, 4000);
+
+(async () => {
+  if (DEMO) return showApp();
+  try {
+    await Auth.handleRedirect();
+  } catch (error) {
+    showSignIn();
+    showError(error.message);
+    return;
+  }
+  if (Auth.signedIn()) showApp(); else showSignIn();
+})();
+</script>
+</body>
+</html>
