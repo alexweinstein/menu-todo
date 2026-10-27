@@ -145,11 +145,7 @@
   /* Check circles */
   .ring { fill: none; stroke: var(--faint); stroke-width: 1.6; }
   .next > .row .ring { stroke: var(--accent); }
-  .progress {
-    fill: none; stroke: var(--green); stroke-width: 2.8; stroke-linecap: round;
-    stroke-dasharray: 62.83; transform: rotate(-90deg); transform-origin: 12px 12px;
-    transition: stroke-dashoffset 0.3s ease;
-  }
+  .check.header .ring { stroke: transparent; }
   .fill { fill: var(--green); transform: scale(0); transform-origin: 12px 12px; }
   .tick {
     fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
@@ -157,7 +153,6 @@
   }
   .completing > .row .fill, .step.just-done .fill { animation: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
   .completing > .row .tick, .step.just-done .tick { animation: draw 0.25s ease-out 0.1s both; }
-  .completing > .row .progress { opacity: 0; }
   @keyframes pop { from { transform: scale(0.4); } 60% { transform: scale(1.25); } to { transform: scale(1); } }
   @keyframes draw { from { stroke-dashoffset: 16; } to { stroke-dashoffset: 0; } }
 
@@ -304,7 +299,7 @@
   @keyframes wave-far { from { transform: scale(1); opacity: 1; } to { transform: scale(3.3); opacity: 0; } }
 
   @media (prefers-reduced-motion: reduce) {
-    .task.shifting, .progress, .toast { transition: none; }
+    .task.shifting, .toast { transition: none; }
   }
 </style>
 </head>
@@ -851,11 +846,9 @@ function releaseRender() {
   if (renderQueued) render();
 }
 
-function checkSVG(progress = 0) {
-  const offset = 62.83 * (1 - progress);
+function checkSVG() {
   return `<svg viewBox="0 0 24 24">
     <circle class="ring" cx="12" cy="12" r="10"/>
-    ${progress > 0 ? `<circle class="progress" cx="12" cy="12" r="10" style="stroke-dashoffset:${offset}"/>` : ""}
     <circle class="fill" cx="12" cy="12" r="11"/>
     <path class="tick" d="M7.5 12.5l3 3 6-6.5"/>
   </svg>`;
@@ -894,7 +887,11 @@ function taskHTML(task, index) {
   return `<div class="${classes}" data-id="${task.id}">
     <div class="row">
       <span class="handle" aria-label="Drag to reorder">${ICON.grip}</span>
-      <button class="check" data-action="complete-task" aria-label="${steps.length ? "Mark the whole task done" : "Mark done"}">${checkSVG(steps.length ? done / steps.length : 0)}</button>
+      ${steps.length
+        // A task with steps is a header: its steps get checked, not it. The circle
+        // keeps its space so titles line up, and shows only to celebrate.
+        ? `<span class="check header" aria-hidden="true">${checkSVG()}</span>`
+        : `<button class="check" data-action="complete-task" aria-label="Mark done">${checkSVG()}</button>`}
       ${body}
       <button class="more" data-action="task-menu" aria-label="More">${ICON.more}</button>
     </div>
@@ -1162,6 +1159,7 @@ function taskMenu(task) {
   actionSheet(task.title, [
     { label: "Edit", run: () => startEditing({ task: task.id }) },
     { label: "Add Step", run: () => startAddingStep(task.id) },
+    ...(task.steps.length ? [{ label: "Mark All Done", run: () => completeTask(task.id) }] : []),
     ...(index > 0 ? [{ label: "Make Next", run: () => mutate(ops.move(task.id, 0)) }] : []),
     ...(index < state.tasks.length - 1 ? [{ label: "Move to Bottom", run: () => mutate(ops.move(task.id, state.tasks.length)) }] : []),
     { label: "Delete", danger: true, run: () => mutate(ops.remove(task.id)) },
