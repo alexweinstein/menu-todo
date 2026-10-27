@@ -366,6 +366,7 @@
     </div>
     <p class="cheer" id="cheer"></p>
     <div class="done-title" id="doneTitle"></div>
+    <div class="all-done" id="doneDetail" hidden></div>
     <div class="all-done" id="allDone" hidden>Nothing left on your list 🎉</div>
   </div>
   <canvas id="confetti"></canvas>
@@ -984,6 +985,12 @@ function toggleStep(taskID, stepID) {
     return;
   }
   const finishesTask = task.steps.filter((s) => !s.done).length === 1;
+  // The last step gets the task's celebration instead.
+  if (!finishesTask) {
+    const [x, y] = centerOf(list.querySelector(`.step[data-step="${stepID}"] .check`));
+    const done = task.steps.filter((s) => s.done).length + 1;
+    Celebration.play(step.title, false, x, y, `${task.title} · ${done} of ${task.steps.length}`);
+  }
   state.justDone.add(stepID);
   setTimeout(() => state.justDone.delete(stepID), 800);
   mutate(ops.step(taskID, stepID, (s) => { s.done = true; }));
@@ -1082,13 +1089,32 @@ function commitEdit(input) {
   }
 }
 
-function commitStep(input, keepOpen) {
+function commitStep(input, keepOpen, text = input.value) {
   const taskID = state.addingStep;
   if (!taskID) return;
-  const title = input.value.trim();
-  if (!keepOpen || !title) state.addingStep = null;
-  if (title) mutate(ops.addStep(taskID, { id: uuid(), title, done: false }));
+  const titles = titlesIn(text);
+  if (!keepOpen || !titles.length) state.addingStep = null;
+  // Ids are made once here: ops get replayed after a sync conflict.
+  const adds = titles.map((title) => ops.addStep(taskID, { id: uuid(), title, done: false }));
+  if (adds.length) mutate((tasks) => adds.forEach((add) => add(tasks)));
   else render();
+}
+
+// Pasted text can hold a whole list: one title per line, with any bullets dropped. Same rules as Store.titles(in:).
+function titlesIn(text) {
+  return text.split(/\r\n|\r|\n|\u2028|\u2029/)
+    .map((line) => line.trim().replace(/^(- \[ \]|-|\*|•|◦|–) +/, "").trim())
+    .filter(Boolean);
+}
+
+// An <input> drops pasted line breaks, so a pasted list is caught here and added one item per line.
+// Returns the field's full text with the paste spliced in, or null for an ordinary one-line paste.
+function pastedList(event) {
+  const pasted = event.clipboardData?.getData("text/plain") ?? "";
+  if (titlesIn(pasted).length < 2) return null;
+  event.preventDefault();
+  const input = event.target;
+  return input.value.slice(0, input.selectionStart) + "\n" + pasted + "\n" + input.value.slice(input.selectionEnd);
 }
 
 list.addEventListener("keydown", (event) => {
@@ -1103,6 +1129,12 @@ list.addEventListener("keydown", (event) => {
   }
 });
 
+list.addEventListener("paste", (event) => {
+  if (!event.target.matches("[data-add-step]")) return;
+  const text = pastedList(event);
+  if (text !== null) commitStep(event.target, true, text);
+});
+
 list.addEventListener("focusout", (event) => {
   if (rendering) return;
   const input = event.target;
@@ -1111,15 +1143,24 @@ list.addEventListener("focusout", (event) => {
 });
 
 $("#addInput").addEventListener("input", (e) => { $("#addButton").disabled = !e.target.value.trim(); });
+$("#addInput").addEventListener("paste", (event) => {
+  const text = pastedList(event);
+  if (text !== null) addTasks(text);
+});
 $("#addForm").addEventListener("submit", (event) => {
   event.preventDefault();
+  addTasks($("#addInput").value);
+});
+
+function addTasks(text) {
   const input = $("#addInput");
-  const title = input.value.trim();
-  if (!title || !state.ready) return;
-  mutate(ops.add({ id: uuid(), title, created: isoNow(), steps: [] }));
+  const titles = titlesIn(text);
+  if (!titles.length || !state.ready) return;
+  const adds = titles.map((title) => ops.add({ id: uuid(), title, created: isoNow(), steps: [] }));
+  mutate((tasks) => adds.forEach((add) => add(tasks)));
   input.value = "";
   $("#addButton").disabled = true;
-});
+}
 
 function openSheet(build) {
   const backdrop = document.createElement("div");
@@ -1392,12 +1433,15 @@ const Celebration = (() => {
   return {
     enabled: () => storage.get("celebrate", true),
 
-    play(title, allDone, x, y) {
+    // `detail` goes under the title, such as which task a finished step belongs to.
+    play(title, allDone, x, y, detail = "") {
       if (!this.enabled() || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       const cheer = pickCheer(allDone);
       $("#cheer").textContent = cheer;
       $("#cheer").classList.toggle("long", cheer.length > 22);
       $("#doneTitle").textContent = title;
+      $("#doneDetail").textContent = detail;
+      $("#doneDetail").hidden = !detail;
       $("#allDone").hidden = !allDone;
 
       // Restart the CSS animations from the top.
